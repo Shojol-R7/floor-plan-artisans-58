@@ -38,18 +38,24 @@ export const FloorPlanProcessor: React.FC = () => {
     setIsProcessing(true);
     
     try {
-      // Create advanced processor with progress callback
+      // Only parse the floor plan - don't place îlots or corridors automatically
       const processor = new AdvancedFloorPlanProcessor((stage) => {
         setProcessingStage(stage);
       });
       
-      // Process the complete floor plan with îlots and corridors
-      const result = await processor.processFloorPlan(file, config);
+      // Process ONLY the basic floor plan parsing, not îlots/corridors
+      const result = await processor.parseFloorPlanOnly(file);
       
       setFloorPlan(result.floorPlan);
-      setCurrentStage('corridors'); // Complete pipeline
+      setCurrentStage('empty'); // Just show the empty floor plan
       
-      toast.success(`Successfully processed ${file.name} with ${result.floorPlan.ilots.length} îlots and ${result.floorPlan.corridors.length} corridors`);
+      toast.success(`Successfully parsed ${file.name} - ready for îlot placement`);
+      
+      setProcessingStage({
+        stage: 'complete',
+        progress: 100,
+        message: `Floor plan ready - click "Place Îlots" to continue`
+      });
       
     } catch (error) {
       console.error('Error processing file:', error);
@@ -261,12 +267,75 @@ export const FloorPlanProcessor: React.FC = () => {
               />
             )}
 
-            {/* Action Buttons */}
+            {/* Step-by-Step Workflow Controls */}
             {floorPlan && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Zap className="h-5 w-5" />
+                    Workflow Control
+                  </CardTitle>
+                  <CardDescription>
+                    Process your floor plan step-by-step with full control
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {/* Step 1: Place Îlots */}
+                    <Button
+                      onClick={handlePlaceIlots}
+                      disabled={isProcessing || currentStage !== 'empty'}
+                      className="w-full justify-start"
+                      variant={currentStage === 'empty' ? 'default' : 'secondary'}
+                    >
+                      <Grid className="h-4 w-4 mr-2" />
+                      {currentStage === 'empty' ? 'Place Îlots' : '✓ Îlots Placed'}
+                    </Button>
+                    
+                    {/* Step 2: Generate Corridors */}
+                    <Button
+                      onClick={handleGenerateCorridors}
+                      disabled={isProcessing || currentStage !== 'placed'}
+                      className="w-full justify-start"
+                      variant={currentStage === 'placed' ? 'default' : 'secondary'}
+                    >
+                      <Route className="h-4 w-4 mr-2" />
+                      {currentStage === 'corridors' ? '✓ Corridors Generated' : 'Generate Corridors'}
+                    </Button>
+                    
+                    <Separator />
+                    
+                    {/* Additional Actions */}
+                    <Button
+                      onClick={handleReset}
+                      disabled={isProcessing}
+                      variant="outline"
+                      className="w-full justify-start"
+                    >
+                      <RotateCcw className="h-4 w-4 mr-2" />
+                      Reset
+                    </Button>
+                    
+                    <Button
+                      onClick={handleExport}
+                      disabled={!floorPlan || currentStage === 'empty'}
+                      variant="outline"
+                      className="w-full justify-start"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Export Results
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Processing Status */}
+            {floorPlan && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
                     Processing Actions
                   </CardTitle>
                 </CardHeader>

@@ -53,6 +53,47 @@ export class AdvancedFloorPlanProcessor {
     }
   }
 
+  async parseFloorPlanOnly(file: File): Promise<AnalysisResult> {
+    try {
+      // Only parse the basic floor plan without îlots/corridors
+      this.updateProgress('parsing', 20, 'Analyzing CAD file structure...');
+      const rawFloorPlan = await this.parseCADFile(file);
+      
+      this.updateProgress('analyzing', 50, 'Identifying architectural elements...');
+      const cleanFloorPlan = await this.transformToArchitecturalPlan(rawFloorPlan);
+      
+      this.updateProgress('transforming', 80, 'Optimizing floor plan structure...');
+      const optimizedPlan = await this.optimizeFloorPlan(cleanFloorPlan);
+      
+      // Don't add îlots or corridors - just return the clean floor plan
+      optimizedPlan.ilots = [];
+      optimizedPlan.corridors = [];
+      
+      this.updateProgress('complete', 100, 'Floor plan parsed successfully!');
+      
+      return {
+        floorPlan: optimizedPlan,
+        suggestions: {
+          optimalLayout: {
+            layoutProfile: 25,
+            corridorWidth: 1.2,
+            minIlotSpacing: 1.0,
+            maxIlotSize: 4.0,
+            allowWallTouching: true,
+            respectEntranceClearance: true
+          },
+          estimatedCapacity: 0,
+          efficiencyScore: 0,
+          warnings: []
+        }
+      };
+      
+    } catch (error) {
+      console.error('Floor plan parsing error:', error);
+      throw new Error(`Parsing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   private async parseCADFile(file: File): Promise<Partial<FloorPlan>> {
     // Advanced CAD parsing with multi-format support
     const fileExtension = file.name.toLowerCase().split('.').pop();
