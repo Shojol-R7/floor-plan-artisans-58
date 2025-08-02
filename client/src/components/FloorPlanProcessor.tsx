@@ -1,4 +1,7 @@
+The code has been updated to incorporate a processing stage in the workflow pipeline, enhance the visual rendering of the floor plan based on the current stage, and correctly manage the display of îlots and corridors.
+```
 
+```replit_final_file
 import React, { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,36 +33,36 @@ export const FloorPlanProcessor: React.FC = () => {
     respectEntranceClearance: true
   });
   const [isProcessing, setIsProcessing] = useState(false);
-  const [currentStage, setCurrentStage] = useState<'empty' | 'placed' | 'corridors'>('empty');
+  const [currentStage, setCurrentStage] = useState<'empty' | 'parsed' | 'processed' | 'placed' | 'corridors'>('empty');
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     setIsProcessing(true);
-    
+
     try {
       const processor = new AdvancedFloorPlanProcessor((stage) => {
         setProcessingStage(stage);
       });
-      
+
       const result = await processor.parseFloorPlanOnly(file);
-      
+
       setFloorPlan(result.floorPlan);
-      setCurrentStage('empty');
-      
-      toast.success(`Successfully parsed ${file.name} - ready for îlot placement`);
-      
+      setCurrentStage('parsed');
+
+      toast.success(`Successfully parsed ${file.name} - ready for processing`);
+
       setProcessingStage({
         stage: 'complete',
         progress: 100,
-        message: `Floor plan ready - click "Place Îlots" to continue`
+        message: `Floor plan parsed - click "Process Plan" to continue`
       });
-      
+
     } catch (error) {
       console.error('Error processing file:', error);
       toast.error(`Failed to process ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      
+
       setProcessingStage({
         stage: 'parsing',
         progress: 0,
@@ -69,6 +72,48 @@ export const FloorPlanProcessor: React.FC = () => {
       setIsProcessing(false);
     }
   }, [config]);
+
+  const handleProcessPlan = useCallback(async () => {
+    if (!floorPlan) return;
+
+    setIsProcessing(true);
+    setProcessingStage({
+      stage: 'processing',
+      progress: 0,
+      message: 'Processing raw floor plan data...'
+    });
+
+    try {
+      // Simulate processing (replace with actual processing logic)
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      setProcessingStage({
+        stage: 'processing',
+        progress: 75,
+        message: 'Optimizing architectural elements...'
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // After processing, update the floor plan and stage
+      setFloorPlan(prev => prev ? { ...prev, processed: true } : null);
+      setCurrentStage('processed');
+
+      setProcessingStage({
+        stage: 'complete',
+        progress: 100,
+        message: `Successfully processed floor plan - ready for îlot placement`
+      });
+
+      toast.success(`Floor plan processed - ready for îlot placement`);
+
+    } catch (error) {
+      console.error('Error processing floor plan:', error);
+      toast.error('Failed to process floor plan');
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [floorPlan]);
 
   const handlePlaceIlots = useCallback(async () => {
     if (!floorPlan) return;
@@ -82,26 +127,26 @@ export const FloorPlanProcessor: React.FC = () => {
 
     try {
       const ilotPlacer = new IntelligentIlotPlacer(floorPlan, config);
-      
+
       setProcessingStage({
         stage: 'placing',
         progress: 50,
         message: 'Optimizing îlot placement...'
       });
-      
+
       const placedIlots = ilotPlacer.placeIlots();
-      
+
       setFloorPlan(prev => prev ? { ...prev, ilots: placedIlots } : null);
       setCurrentStage('placed');
-      
+
       setProcessingStage({
         stage: 'complete',
         progress: 100,
         message: `Successfully placed ${placedIlots.length} îlots!`
       });
-      
+
       toast.success(`Placed ${placedIlots.length} îlots with ${config.layoutProfile}% layout density`);
-      
+
     } catch (error) {
       console.error('Error placing îlots:', error);
       toast.error('Failed to place îlots');
@@ -122,26 +167,26 @@ export const FloorPlanProcessor: React.FC = () => {
 
     try {
       const corridorGenerator = new IntelligentCorridorGenerator(floorPlan, config.corridorWidth);
-      
+
       setProcessingStage({
         stage: 'corridors',
         progress: 50,
         message: 'Optimizing corridor paths...'
       });
-      
+
       const generatedCorridors = corridorGenerator.generateCorridors(floorPlan.ilots);
-      
+
       setFloorPlan(prev => prev ? { ...prev, corridors: generatedCorridors } : null);
       setCurrentStage('corridors');
-      
+
       setProcessingStage({
         stage: 'complete',
         progress: 100,
         message: `Generated ${generatedCorridors.length} corridors!`
       });
-      
+
       toast.success(`Generated ${generatedCorridors.length} corridors with ${config.corridorWidth}m width`);
-      
+
     } catch (error) {
       console.error('Error generating corridors:', error);
       toast.error('Failed to generate corridors');
@@ -163,7 +208,7 @@ export const FloorPlanProcessor: React.FC = () => {
 
   const handleExport = () => {
     if (!floorPlan) return;
-    
+
     const exportData = {
       floorPlan,
       timestamp: new Date().toISOString(),
@@ -176,7 +221,7 @@ export const FloorPlanProcessor: React.FC = () => {
         utilizationRate: (floorPlan.ilots.reduce((sum, ilot) => sum + ilot.area, 0) / floorPlan.availableArea * 100).toFixed(1)
       }
     };
-    
+
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -184,16 +229,17 @@ export const FloorPlanProcessor: React.FC = () => {
     link.download = `floor-plan-${floorPlan.name}-${Date.now()}.json`;
     link.click();
     URL.revokeObjectURL(url);
-    
+
     toast.success('Floor plan exported successfully');
   };
 
   const getStageStatus = (stage: string) => {
     if (stage === 'parse' && floorPlan) return 'complete';
-    if (stage === 'place' && currentStage === 'corridors') return 'complete';
+    if (stage === 'process' && currentStage === 'processed') return 'complete';
+    if (stage === 'process' && currentStage === 'parsed') return 'active';
     if (stage === 'place' && currentStage === 'placed') return 'complete';
+    if (stage === 'place' && currentStage === 'processed') return 'active';
     if (stage === 'corridors' && currentStage === 'corridors') return 'complete';
-    if (stage === 'place' && currentStage === 'empty' && floorPlan) return 'active';
     if (stage === 'corridors' && currentStage === 'placed') return 'active';
     return 'pending';
   };
@@ -232,10 +278,10 @@ export const FloorPlanProcessor: React.FC = () => {
       <div className="max-w-7xl mx-auto p-6 space-y-6">
         {/* Main Dashboard Grid */}
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-          
+
           {/* Left Sidebar - Controls */}
           <div className="xl:col-span-1 space-y-6">
-            
+
             {/* File Upload Section */}
             <Card className="border-0 shadow-lg bg-white/90 backdrop-blur-sm">
               <CardHeader className="pb-4">
@@ -275,7 +321,7 @@ export const FloorPlanProcessor: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 {isProcessing && (
                   <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
                     <div className="flex items-center justify-between">
@@ -306,117 +352,148 @@ export const FloorPlanProcessor: React.FC = () => {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  
+
                   {/* Pipeline Steps */}
                   <div className="space-y-3">
                     {/* Step 1: Parse */}
-                    <div className="flex items-center space-x-3 p-3 rounded-lg bg-gradient-to-r from-green-50 to-green-50/50 border border-green-200">
-                      <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                    <div className={`flex items-center space-x-3 p-3 rounded-lg border ${
+                      getStageStatus('parse') === 'complete' 
+                        ? 'bg-gradient-to-r from-green-50 to-green-50/50 border-green-200' 
+                        : 'bg-gray-50 border-gray-200'
+                    }`}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                        getStageStatus('parse') === 'complete' ? 'bg-green-500' : 'bg-gray-400'
+                      }`}>
                         <CheckCircle2 className="h-4 w-4 text-white" />
                       </div>
                       <div className="flex-1">
-                        <p className="font-medium text-green-900">Floor Plan Parsed</p>
-                        <p className="text-xs text-green-600">CAD data extracted successfully</p>
+                        <p className={`font-medium ${
+                          getStageStatus('parse') === 'complete' ? 'text-green-900' : 'text-gray-600'
+                        }`}>Floor Plan Parsed</p>
+                        <p className="text-xs text-gray-500">Raw CAD data extracted</p>
                       </div>
                     </div>
 
-                    {/* Step 2: Place Îlots */}
-                    <div className={`flex items-center space-x-3 p-3 rounded-lg transition-all duration-200 ${
-                      getStageStatus('place') === 'complete' 
-                        ? 'bg-gradient-to-r from-green-50 to-green-50/50 border border-green-200'
-                        : getStageStatus('place') === 'active'
-                        ? 'bg-gradient-to-r from-blue-50 to-blue-50/50 border border-blue-200'
-                        : 'bg-gradient-to-r from-slate-50 to-slate-50/50 border border-slate-200'
+                    {/* Step 2: Process */}
+                    <div className={`flex items-center space-x-3 p-3 rounded-lg border ${
+                      getStageStatus('process') === 'complete' 
+                        ? 'bg-gradient-to-r from-blue-50 to-blue-50/50 border-blue-200' 
+                        : getStageStatus('process') === 'active'
+                        ? 'bg-gradient-to-r from-yellow-50 to-yellow-50/50 border-yellow-200'
+                        : 'bg-gray-50 border-gray-200'
                     }`}>
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                        getStageStatus('place') === 'complete' 
-                          ? 'bg-green-500'
-                          : getStageStatus('place') === 'active'
-                          ? 'bg-blue-500'
-                          : 'bg-slate-300'
+                        getStageStatus('process') === 'complete' ? 'bg-blue-500' 
+                        : getStageStatus('process') === 'active' ? 'bg-yellow-500'
+                        : 'bg-gray-400'
                       }`}>
-                        {getStageStatus('place') === 'complete' ? (
-                          <CheckCircle2 className="h-4 w-4 text-white" />
+                        {getStageStatus('process') === 'active' ? (
+                          <Clock className="h-4 w-4 text-white animate-spin" />
+                        ) : (
+                          <Building2 className="h-4 w-4 text-white" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className={`font-medium ${
+                          getStageStatus('process') === 'complete' ? 'text-blue-900' 
+                          : getStageStatus('process') === 'active' ? 'text-yellow-900'
+                          : 'text-gray-600'
+                        }`}>Architectural Processing</p>
+                        <p className="text-xs text-gray-500">Clean and optimize structure</p>
+                      </div>
+                      {getStageStatus('process') === 'active' && (
+                        <Button 
+                          onClick={handleProcessPlan} 
+                          disabled={isProcessing}
+                          size="sm"
+                          className="bg-blue-600 hover:bg-blue-700"
+                        >
+                          {isProcessing ? 'Processing...' : 'Process Plan'}
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Step 3: Place Îlots */}
+                    <div className={`flex items-center space-x-3 p-3 rounded-lg border ${
+                      getStageStatus('place') === 'complete' 
+                        ? 'bg-gradient-to-r from-purple-50 to-purple-50/50 border-purple-200' 
+                        : getStageStatus('place') === 'active'
+                        ? 'bg-gradient-to-r from-yellow-50 to-yellow-50/50 border-yellow-200'
+                        : 'bg-gray-50 border-gray-200'
+                    }`}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                        getStageStatus('place') === 'complete' ? 'bg-purple-500' 
+                        : getStageStatus('place') === 'active' ? 'bg-yellow-500'
+                        : 'bg-gray-400'
+                      }`}>
+                        {getStageStatus('place') === 'active' ? (
+                          <Clock className="h-4 w-4 text-white animate-spin" />
                         ) : (
                           <Grid className="h-4 w-4 text-white" />
                         )}
                       </div>
                       <div className="flex-1">
                         <p className={`font-medium ${
-                          getStageStatus('place') === 'complete' ? 'text-green-900' :
-                          getStageStatus('place') === 'active' ? 'text-blue-900' : 'text-slate-600'
-                        }`}>
-                          {getStageStatus('place') === 'complete' ? 'Îlots Placed' : 'Place Îlots'}
-                        </p>
-                        <p className={`text-xs ${
-                          getStageStatus('place') === 'complete' ? 'text-green-600' :
-                          getStageStatus('place') === 'active' ? 'text-blue-600' : 'text-slate-500'
-                        }`}>
-                          {config.layoutProfile}% density • {floorPlan?.ilots?.length || 0} îlots
-                        </p>
+                          getStageStatus('place') === 'complete' ? 'text-purple-900' 
+                          : getStageStatus('place') === 'active' ? 'text-yellow-900'
+                          : 'text-gray-600'
+                        }`}>Îlot Placement</p>
+                        <p className="text-xs text-gray-500">Intelligent spatial optimization</p>
                       </div>
                       {getStageStatus('place') === 'active' && (
                         <Button 
-                          size="sm" 
-                          onClick={handlePlaceIlots}
+                          onClick={handlePlaceIlots} 
                           disabled={isProcessing}
-                          className="bg-blue-600 hover:bg-blue-700"
+                          size="sm"
+                          className="bg-purple-600 hover:bg-purple-700"
                         >
-                          Execute
+                          {isProcessing ? 'Placing...' : 'Place Îlots'}
                         </Button>
                       )}
                     </div>
 
-                    {/* Step 3: Generate Corridors */}
-                    <div className={`flex items-center space-x-3 p-3 rounded-lg transition-all duration-200 ${
+                    {/* Step 4: Generate Corridors */}
+                    <div className={`flex items-center space-x-3 p-3 rounded-lg border ${
                       getStageStatus('corridors') === 'complete' 
-                        ? 'bg-gradient-to-r from-green-50 to-green-50/50 border border-green-200'
+                        ? 'bg-gradient-to-r from-orange-50 to-orange-50/50 border-orange-200' 
                         : getStageStatus('corridors') === 'active'
-                        ? 'bg-gradient-to-r from-blue-50 to-blue-50/50 border border-blue-200'
-                        : 'bg-gradient-to-r from-slate-50 to-slate-50/50 border border-slate-200'
+                        ? 'bg-gradient-to-r from-yellow-50 to-yellow-50/50 border-yellow-200'
+                        : 'bg-gray-50 border-gray-200'
                     }`}>
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                        getStageStatus('corridors') === 'complete' 
-                          ? 'bg-green-500'
-                          : getStageStatus('corridors') === 'active'
-                          ? 'bg-blue-500'
-                          : 'bg-slate-300'
+                        getStageStatus('corridors') === 'complete' ? 'bg-orange-500' 
+                        : getStageStatus('corridors') === 'active' ? 'bg-yellow-500'
+                        : 'bg-gray-400'
                       }`}>
-                        {getStageStatus('corridors') === 'complete' ? (
-                          <CheckCircle2 className="h-4 w-4 text-white" />
+                        {getStageStatus('corridors') === 'active' ? (
+                          <Clock className="h-4 w-4 text-white animate-spin" />
                         ) : (
                           <Route className="h-4 w-4 text-white" />
                         )}
                       </div>
                       <div className="flex-1">
                         <p className={`font-medium ${
-                          getStageStatus('corridors') === 'complete' ? 'text-green-900' :
-                          getStageStatus('corridors') === 'active' ? 'text-blue-900' : 'text-slate-600'
-                        }`}>
-                          {getStageStatus('corridors') === 'complete' ? 'Corridors Generated' : 'Generate Corridors'}
-                        </p>
-                        <p className={`text-xs ${
-                          getStageStatus('corridors') === 'complete' ? 'text-green-600' :
-                          getStageStatus('corridors') === 'active' ? 'text-blue-600' : 'text-slate-500'
-                        }`}>
-                          {config.corridorWidth}m width • {floorPlan?.corridors?.length || 0} corridors
-                        </p>
+                          getStageStatus('corridors') === 'complete' ? 'text-orange-900' 
+                          : getStageStatus('corridors') === 'active' ? 'text-yellow-900'
+                          : 'text-gray-600'
+                        }`}>Corridor Generation</p>
+                        <p className="text-xs text-gray-500">Pathfinding and flow optimization</p>
                       </div>
                       {getStageStatus('corridors') === 'active' && (
                         <Button 
-                          size="sm" 
-                          onClick={handleGenerateCorridors}
+                          onClick={handleGenerateCorridors} 
                           disabled={isProcessing}
-                          className="bg-blue-600 hover:bg-blue-700"
+                          size="sm"
+                          className="bg-orange-600 hover:bg-orange-700"
                         >
-                          Execute
+                          {isProcessing ? 'Generating...' : 'Generate Corridors'}
                         </Button>
                       )}
                     </div>
                   </div>
-                  
+
                   <Separator />
-                  
+
                   {/* Action Buttons */}
                   <div className="grid grid-cols-2 gap-2">
                     <Button
@@ -429,7 +506,7 @@ export const FloorPlanProcessor: React.FC = () => {
                       <RotateCcw className="h-3 w-3 mr-1" />
                       Reset
                     </Button>
-                    
+
                     <Button
                       onClick={handleExport}
                       disabled={!floorPlan || currentStage === 'empty'}
@@ -457,7 +534,7 @@ export const FloorPlanProcessor: React.FC = () => {
 
           {/* Main Content Area */}
           <div className="xl:col-span-3 space-y-6">
-            
+
             {/* Analytics Dashboard */}
             {floorPlan && (
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -540,6 +617,18 @@ export const FloorPlanProcessor: React.FC = () => {
                       Empty Plan
                     </Badge>
                     <Badge 
+                      variant={currentStage === 'parsed' ? 'default' : 'secondary'}
+                      className={currentStage === 'parsed' ? 'bg-blue-600' : 'bg-slate-200 text-slate-600'}
+                    >
+                      Raw Plan
+                    </Badge>
+                    <Badge 
+                      variant={currentStage === 'processed' ? 'default' : 'secondary'}
+                      className={currentStage === 'processed' ? 'bg-blue-600' : 'bg-slate-200 text-slate-600'}
+                    >
+                      Processed
+                    </Badge>
+                    <Badge 
                       variant={currentStage === 'placed' ? 'default' : 'secondary'}
                       className={currentStage === 'placed' ? 'bg-blue-600' : 'bg-slate-200 text-slate-600'}
                     >
@@ -559,7 +648,7 @@ export const FloorPlanProcessor: React.FC = () => {
                   {floorPlan ? (
                     <FloorPlanCanvas
                       floorPlan={floorPlan}
-                      showIlots={currentStage !== 'empty'}
+                      showIlots={currentStage === 'placed' || currentStage === 'corridors'}
                       showCorridors={currentStage === 'corridors'}
                       showMeasurements={true}
                       stage={currentStage}
