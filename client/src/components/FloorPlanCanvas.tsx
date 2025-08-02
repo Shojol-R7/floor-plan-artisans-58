@@ -1,14 +1,15 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { Stage, Layer, Line, Rect, Circle, Text, Group } from 'react-konva';
-import { FloorPlan, Ilot, Corridor, Wall, RestrictedArea, Entrance } from '@/types/floorplan';
+
+import React, { useRef, useEffect } from 'react';
+import { Stage, Layer, Rect, Line, Circle, Text, Group, Path } from 'react-konva';
+import { FloorPlan, Ilot, Corridor, Wall, Room, RestrictedArea, Entrance } from '@/types/floorplan';
 
 interface FloorPlanCanvasProps {
   floorPlan: FloorPlan;
   showIlots?: boolean;
   showCorridors?: boolean;
   showMeasurements?: boolean;
-  stage: 'empty' | 'raw' | 'placed' | 'corridors';
-  onElementClick?: (elementId: string, elementType: string) => void;
+  stage: 'empty' | 'parsed' | 'processed' | 'placed' | 'corridors';
+  onElementClick?: (id: string, type: string) => void;
 }
 
 export const FloorPlanCanvas: React.FC<FloorPlanCanvasProps> = ({
@@ -20,118 +21,84 @@ export const FloorPlanCanvas: React.FC<FloorPlanCanvasProps> = ({
   onElementClick
 }) => {
   const stageRef = useRef<any>(null);
-  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
-  const [scale, setScale] = useState(20);
-  const [offset, setOffset] = useState({ x: 50, y: 50 });
-  const padding = 50;
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Enhanced canvas dimensions and scaling
   const canvasWidth = 800;
   const canvasHeight = 600;
+  const padding = 40;
 
-  console.log('FloorPlanCanvas render - floorPlan exists:', !!floorPlan, 'stage:', stage);
+  // Calculate precision scaling for professional rendering
+  const bounds = floorPlan.bounds;
+  const planWidth = bounds.maxX - bounds.minX;
+  const planHeight = bounds.maxY - bounds.minY;
+  
+  const scaleX = (canvasWidth - 2 * padding) / planWidth;
+  const scaleY = (canvasHeight - 2 * padding) / planHeight;
+  const scale = Math.min(scaleX, scaleY) * 0.85; // 85% for better visibility
 
-  useEffect(() => {
-    if (floorPlan && floorPlan.bounds) {
-      console.log('Calculating optimal view for floor plan:', floorPlan.name);
-      calculateOptimalView();
-    }
-  }, [floorPlan]);
+  const offsetX = (canvasWidth - planWidth * scale) / 2;
+  const offsetY = (canvasHeight - planHeight * scale) / 2;
 
-  const calculateOptimalView = () => {
-    if (!floorPlan || !floorPlan.bounds) return;
-
-    const bounds = floorPlan.bounds;
-    const planWidth = bounds.maxX - bounds.minX;
-    const planHeight = bounds.maxY - bounds.minY;
-
-    if (planWidth <= 0 || planHeight <= 0) return;
-
-    const scaleX = (canvasWidth - 2 * padding) / planWidth;
-    const scaleY = (canvasHeight - 2 * padding) / planHeight;
-    const optimalScale = Math.min(scaleX, scaleY, 50);
-
-    setScale(optimalScale);
-    setOffset({
-      x: (canvasWidth - planWidth * optimalScale) / 2 - bounds.minX * optimalScale,
-      y: (canvasHeight - planHeight * optimalScale) / 2 - bounds.minY * optimalScale
-    });
-  };
-
+  // Professional coordinate transformation
   const transformPoint = (x: number, y: number) => ({
-    x: x * scale + offset.x,
-    y: y * scale + offset.y
+    x: offsetX + (x - bounds.minX) * scale,
+    y: offsetY + (y - bounds.minY) * scale
   });
 
+  // Enhanced visual rendering functions
   const renderWalls = () => {
-    if (!floorPlan?.walls) return null;
+    return floorPlan.walls.map((wall: Wall) => {
+      const start = transformPoint(wall.start.x, wall.start.y);
+      const end = transformPoint(wall.end.x, wall.end.y);
+      
+      // Advanced wall styling based on stage and type
+      let strokeColor = '#2c3e50';
+      let strokeWidth = 3;
+      let opacity = 1;
+      
+      if (stage === 'parsed') {
+        strokeColor = '#e74c3c'; // Raw data - red
+        strokeWidth = 2;
+        opacity = 0.7;
+      } else if (stage === 'processed') {
+        strokeColor = '#27ae60'; // Processed - green
+        strokeWidth = 3;
+        opacity = 0.9;
+      } else {
+        // Final stages - professional black
+        strokeColor = wall.type === 'exterior' ? '#1a1a1a' : '#34495e';
+        strokeWidth = wall.type === 'exterior' ? 4 : 3;
+      }
 
-    return floorPlan.walls.map((wall) => {
-      const key = `wall-${wall.id}`;
-
-      const getWallStyle = (wallType: string) => {
-        switch (wallType) {
-          case 'exterior':
-            return { stroke: '#2c3e50', strokeWidth: 6 };
-          case 'load-bearing':
-            return { stroke: '#34495e', strokeWidth: 4 };
-          default:
-            return { stroke: '#5d6d7e', strokeWidth: 3 };
-        }
-      };
-
-      const style = getWallStyle(wall.type);
-
-      return (
-        <Line
-          key={key}
-          points={[
-            (wall.start.x - floorPlan.bounds.minX) * scale + padding,
-            (wall.start.y - floorPlan.bounds.minY) * scale + padding,
-            (wall.end.x - floorPlan.bounds.minX) * scale + padding,
-            (wall.end.y - floorPlan.bounds.minY) * scale + padding,
-          ]}
-          stroke={style.stroke}
-          strokeWidth={style.strokeWidth}
-          lineCap="round"
-          lineJoin="round"
-          onClick={() => onElementClick?.(wall.id, 'wall')}
-        />
-      );
-    });
-  };
-
-  const renderRestrictedAreas = () => {
-    if (!floorPlan?.restrictedAreas) return null;
-
-    return floorPlan.restrictedAreas.map((area: RestrictedArea) => {
-      const points = area.boundaries.flatMap(point => {
-        const transformed = transformPoint(point.x, point.y);
-        return [transformed.x, transformed.y];
-      });
+      console.log(`Rendering wall ${wall.id} from (${start.x}, ${start.y}) to (${end.x}, ${end.y})`);
 
       return (
-        <Group key={area.id}>
+        <Group key={wall.id}>
+          {/* Wall shadow for depth */}
           <Line
-            points={points}
-            fill="rgba(231, 76, 60, 0.2)"
-            stroke="#e74c3c"
-            strokeWidth={2}
-            closed={true}
-            onClick={() => onElementClick?.(area.id, 'restricted')}
+            points={[start.x + 1, start.y + 1, end.x + 1, end.y + 1]}
+            stroke="rgba(0,0,0,0.2)"
+            strokeWidth={strokeWidth}
+            lineCap="round"
           />
-          {showMeasurements && (
-            <Text
-              x={transformPoint(
-                area.boundaries.reduce((sum, p) => sum + p.x, 0) / area.boundaries.length,
-                area.boundaries.reduce((sum, p) => sum + p.y, 0) / area.boundaries.length
-              ).x}
-              y={transformPoint(
-                area.boundaries.reduce((sum, p) => sum + p.x, 0) / area.boundaries.length,
-                area.boundaries.reduce((sum, p) => sum + p.y, 0) / area.boundaries.length
-              ).y}
-              text={`NO ENTRÉE\n${area.area.toFixed(1)}m²`}
-              fontSize={10}
-              fill="#FFFFFF"
-              align="center"
+          {/* Main wall */}
+          <Line
+            points={[start.x, start.y, end.x, end.y]}
+            stroke={strokeColor}
+            strokeWidth={strokeWidth}
+            lineCap="round"
+            opacity={opacity}
+            onClick={() => onElementClick?.(wall.id, 'wall')}
+          />
+          {/* Wall thickness representation */}
+          {stage !== 'parsed' && (
+            <Line
+              points={[start.x, start.y, end.x, end.y]}
+              stroke={strokeColor}
+              strokeWidth={strokeWidth + wall.thickness * scale}
+              lineCap="round"
+              opacity={0.3}
             />
           )}
         </Group>
@@ -139,48 +106,147 @@ export const FloorPlanCanvas: React.FC<FloorPlanCanvasProps> = ({
     });
   };
 
-  const renderEntrances = () => {
-    if (!floorPlan?.entrances) return null;
+  const renderRooms = () => {
+    return floorPlan.rooms.map((room: Room) => {
+      if (room.boundaries.length < 3) return null;
 
-    return floorPlan.entrances.map((entrance) => {
-      const centerX = (entrance.position.x - floorPlan.bounds.minX) * scale + padding;
-      const centerY = (entrance.position.y - floorPlan.bounds.minY) * scale + padding;
-      const radius = (entrance.width * scale) / 2;
+      const points = room.boundaries.flatMap(point => {
+        const transformed = transformPoint(point.x, point.y);
+        return [transformed.x, transformed.y];
+      });
 
-      const getEntranceColor = (entranceType: string) => {
-        switch (entranceType) {
-          case 'main':
-            return { fill: 'rgba(231, 76, 60, 0.3)', stroke: '#e74c3c' };
-          case 'emergency':
-            return { fill: 'rgba(230, 126, 34, 0.3)', stroke: '#e67e22' };
-          default:
-            return { fill: 'rgba(231, 76, 60, 0.2)', stroke: '#c0392b' };
-        }
-      };
-
-      const colors = getEntranceColor(entrance.type);
+      // Professional room styling based on stage
+      let fillColor = 'rgba(247, 249, 252, 0.6)';
+      let strokeColor = '#bdc3c7';
+      
+      if (stage === 'parsed') {
+        fillColor = room.type === 'available' ? 'rgba(255, 243, 224, 0.4)' : 'rgba(255, 235, 238, 0.4)';
+        strokeColor = '#f39c12';
+      } else if (stage === 'processed') {
+        fillColor = room.type === 'available' ? 'rgba(232, 245, 233, 0.6)' : 'rgba(255, 235, 238, 0.4)';
+        strokeColor = '#27ae60';
+      } else {
+        fillColor = room.type === 'available' ? 'rgba(240, 248, 255, 0.7)' : 'rgba(255, 245, 245, 0.5)';
+        strokeColor = '#95a5a6';
+      }
 
       return (
-        <Group key={`entrance-${entrance.id}`}>
+        <Group key={room.id}>
+          <Line
+            points={points}
+            fill={fillColor}
+            stroke={strokeColor}
+            strokeWidth={1.5}
+            closed={true}
+            onClick={() => onElementClick?.(room.id, 'room')}
+          />
+          {showMeasurements && room.area > 20 && (
+            <Text
+              x={points[0]}
+              y={points[1]}
+              text={`${room.area.toFixed(0)}m²`}
+              fontSize={11}
+              fill="#7f8c8d"
+              fontStyle="bold"
+            />
+          )}
+        </Group>
+      );
+    });
+  };
+
+  const renderRestrictedAreas = () => {
+    return floorPlan.restrictedAreas.map((area: RestrictedArea) => {
+      if (area.boundaries.length < 3) return null;
+
+      const points = area.boundaries.flatMap(point => {
+        const transformed = transformPoint(point.x, point.y);
+        return [transformed.x, transformed.y];
+      });
+
+      // Professional restricted area styling
+      const colors = {
+        stairs: { fill: 'rgba(230, 126, 34, 0.7)', stroke: '#d35400' },
+        elevator: { fill: 'rgba(155, 89, 182, 0.7)', stroke: '#8e44ad' },
+        utility: { fill: 'rgba(52, 152, 219, 0.7)', stroke: '#2980b9' },
+        mechanical: { fill: 'rgba(241, 196, 15, 0.7)', stroke: '#f39c12' }
+      };
+
+      const color = colors[area.type] || colors.utility;
+
+      return (
+        <Group key={area.id}>
+          <Line
+            points={points}
+            fill={color.fill}
+            stroke={color.stroke}
+            strokeWidth={2}
+            closed={true}
+            onClick={() => onElementClick?.(area.id, 'restricted')}
+          />
+          {/* Pattern overlay for restricted areas */}
+          <Line
+            points={points}
+            fill={`url(#pattern-${area.type})`}
+            stroke={color.stroke}
+            strokeWidth={2}
+            closed={true}
+            opacity={0.3}
+          />
+          <Text
+            x={points[0]}
+            y={points[1]}
+            text={area.type.toUpperCase()}
+            fontSize={9}
+            fill={color.stroke}
+            fontWeight="bold"
+          />
+        </Group>
+      );
+    });
+  };
+
+  const renderEntrances = () => {
+    return floorPlan.entrances.map((entrance: Entrance) => {
+      const pos = transformPoint(entrance.position.x, entrance.position.y);
+      const width = entrance.width * scale;
+
+      // Professional entrance styling
+      const colors = {
+        main: { fill: '#27ae60', stroke: '#1e8449' },
+        emergency: { fill: '#e74c3c', stroke: '#c0392b' },
+        service: { fill: '#3498db', stroke: '#2980b9' }
+      };
+
+      const color = colors[entrance.type] || colors.main;
+
+      return (
+        <Group key={entrance.id}>
+          {/* Entrance arc representing door swing */}
+          <Path
+            data={`M ${pos.x - width/2} ${pos.y} A ${width/2} ${width/2} 0 0 1 ${pos.x + width/2} ${pos.y}`}
+            stroke={color.stroke}
+            strokeWidth={3}
+            fill="transparent"
+          />
+          {/* Entrance marker */}
           <Circle
-            x={centerX}
-            y={centerY}
-            radius={radius}
-            fill={colors.fill}
-            stroke={colors.stroke}
+            x={pos.x}
+            y={pos.y}
+            radius={4}
+            fill={color.fill}
+            stroke={color.stroke}
             strokeWidth={2}
             onClick={() => onElementClick?.(entrance.id, 'entrance')}
           />
-          <Line
-            points={[
-              centerX - radius,
-              centerY,
-              centerX + radius,
-              centerY
-            ]}
-            stroke={colors.stroke}
-            strokeWidth={3}
-            lineCap="round"
+          <Text
+            x={pos.x}
+            y={pos.y - 15}
+            text={entrance.type.charAt(0).toUpperCase()}
+            fontSize={8}
+            fill={color.stroke}
+            align="center"
+            fontWeight="bold"
           />
         </Group>
       );
@@ -195,11 +261,45 @@ export const FloorPlanCanvas: React.FC<FloorPlanCanvasProps> = ({
       const width = ilot.width * scale;
       const height = ilot.height * scale;
 
-      const fillColor = stage === 'placed' ? 'rgba(155, 89, 182, 0.8)' : 'rgba(155, 89, 182, 0.6)';
-      const strokeColor = '#8e44ad';
+      // Advanced îlot styling based on type and stage
+      let fillColor = 'rgba(155, 89, 182, 0.85)';
+      let strokeColor = '#8e44ad';
+      let shadowOffset = 2;
+      
+      if (stage === 'placed') {
+        fillColor = 'rgba(46, 204, 113, 0.8)';
+        strokeColor = '#27ae60';
+      }
+
+      // Type-based styling
+      const typeStyles = {
+        large: { fillColor: 'rgba(231, 76, 60, 0.8)', strokeColor: '#c0392b' },
+        'medium-large': { fillColor: 'rgba(230, 126, 34, 0.8)', strokeColor: '#d35400' },
+        medium: { fillColor: 'rgba(241, 196, 15, 0.8)', strokeColor: '#f39c12' },
+        'small-medium': { fillColor: 'rgba(52, 152, 219, 0.8)', strokeColor: '#2980b9' },
+        small: { fillColor: 'rgba(155, 89, 182, 0.8)', strokeColor: '#8e44ad' },
+        micro: { fillColor: 'rgba(149, 165, 166, 0.8)', strokeColor: '#7f8c8d' },
+        fill: { fillColor: 'rgba(39, 174, 96, 0.6)', strokeColor: '#27ae60' }
+      };
+
+      if (typeStyles[ilot.type as keyof typeof typeStyles]) {
+        const style = typeStyles[ilot.type as keyof typeof typeStyles];
+        fillColor = style.fillColor;
+        strokeColor = style.strokeColor;
+      }
 
       return (
         <Group key={ilot.id}>
+          {/* Îlot shadow for 3D effect */}
+          <Rect
+            x={pos.x - width / 2 + shadowOffset}
+            y={pos.y - height / 2 + shadowOffset}
+            width={width}
+            height={height}
+            fill="rgba(0, 0, 0, 0.15)"
+            cornerRadius={6}
+          />
+          {/* Main îlot body */}
           <Rect
             x={pos.x - width / 2}
             y={pos.y - height / 2}
@@ -207,20 +307,41 @@ export const FloorPlanCanvas: React.FC<FloorPlanCanvasProps> = ({
             height={height}
             fill={fillColor}
             stroke={strokeColor}
-            strokeWidth={2}
-            cornerRadius={4}
+            strokeWidth={2.5}
+            cornerRadius={6}
             onClick={() => onElementClick?.(ilot.id, 'ilot')}
           />
-          {showMeasurements && (
-            <Text
-              x={pos.x}
-              y={pos.y}
-              text={`${ilot.area.toFixed(1)}m²`}
-              fontSize={9}
-              fill="#4a154b"
-              align="center"
-              fontWeight="bold"
-            />
+          {/* Îlot highlight */}
+          <Rect
+            x={pos.x - width / 2 + 2}
+            y={pos.y - height / 2 + 2}
+            width={width - 4}
+            height={height - 4}
+            fill="rgba(255, 255, 255, 0.2)"
+            cornerRadius={4}
+          />
+          {/* Measurements and labels */}
+          {showMeasurements && width > 20 && (
+            <Group>
+              <Text
+                x={pos.x}
+                y={pos.y - 5}
+                text={`${ilot.area.toFixed(1)}m²`}
+                fontSize={10}
+                fill="#2c3e50"
+                align="center"
+                fontWeight="bold"
+              />
+              <Text
+                x={pos.x}
+                y={pos.y + 5}
+                text={ilot.type.toUpperCase()}
+                fontSize={8}
+                fill="#34495e"
+                align="center"
+                fontStyle="italic"
+              />
+            </Group>
           )}
         </Group>
       );
@@ -236,30 +357,43 @@ export const FloorPlanCanvas: React.FC<FloorPlanCanvasProps> = ({
         return [transformed.x, transformed.y];
       });
 
+      const corridorWidth = corridor.width * scale;
+
       return (
         <Group key={corridor.id}>
+          {/* Corridor shadow */}
+          <Line
+            points={points.map((p, i) => i % 2 === 0 ? p + 1 : p + 1)}
+            stroke="rgba(0, 0, 0, 0.1)"
+            strokeWidth={corridorWidth + 2}
+            lineCap="round"
+            lineJoin="round"
+          />
+          {/* Main corridor */}
           <Line
             points={points}
-            stroke="#f39c12"
-            strokeWidth={corridor.width * scale}
+            stroke="rgba(52, 152, 219, 0.7)"
+            strokeWidth={corridorWidth}
             lineCap="round"
             lineJoin="round"
             onClick={() => onElementClick?.(corridor.id, 'corridor')}
           />
-          {showMeasurements && corridor.path.length >= 2 && (
+          {/* Corridor centerline */}
+          <Line
+            points={points}
+            stroke="rgba(255, 255, 255, 0.8)"
+            strokeWidth={2}
+            lineCap="round"
+            lineJoin="round"
+            dash={[8, 4]}
+          />
+          {showMeasurements && (
             <Text
-              x={transformPoint(
-                (corridor.path[0].x + corridor.path[corridor.path.length - 1].x) / 2,
-                (corridor.path[0].y + corridor.path[corridor.path.length - 1].y) / 2
-              ).x}
-              y={transformPoint(
-                (corridor.path[0].x + corridor.path[corridor.path.length - 1].x) / 2,
-                (corridor.path[0].y + corridor.path[corridor.path.length - 1].y) / 2
-              ).y}
-              text={`${corridor.length.toFixed(1)}m`}
+              x={points[0]}
+              y={points[1] - 10}
+              text={`${corridor.width}m wide`}
               fontSize={9}
-              fill="#d68910"
-              align="center"
+              fill="#2980b9"
               fontWeight="bold"
             />
           )}
@@ -268,178 +402,156 @@ export const FloorPlanCanvas: React.FC<FloorPlanCanvasProps> = ({
     });
   };
 
-  const renderRooms = () => {
-    if (!floorPlan?.rooms) return null;
+  const renderGrid = () => {
+    if (stage === 'empty') return null;
 
-    return floorPlan.rooms.map((room) => {
-      if (room.boundaries.length < 3) return null;
+    const gridLines = [];
+    const gridSpacing = 50; // 5m grid in real world
+    const gridSize = gridSpacing * scale;
 
-      const points = room.boundaries.flatMap(point => [
-        (point.x - floorPlan.bounds.minX) * scale + padding,
-        (point.y - floorPlan.bounds.minY) * scale + padding,
-      ]);
-
-      const getRoomStyle = (roomType: string) => {
-        switch (roomType) {
-          case 'available':
-            return { 
-              fill: 'rgba(248, 250, 252, 0.9)', 
-              stroke: 'rgba(148, 163, 184, 0.3)', 
-              strokeWidth: 1 
-            };
-          case 'restricted':
-            return { 
-              fill: 'rgba(231, 76, 60, 0.1)', 
-              stroke: '#e74c3c', 
-              strokeWidth: 1 
-            };
-          default:
-            return { 
-              fill: 'rgba(248, 250, 252, 0.7)', 
-              stroke: 'rgba(148, 163, 184, 0.2)', 
-              strokeWidth: 1 
-            };
-        }
-      };
-
-      const style = getRoomStyle(room.type);
-
-      return (
+    // Vertical grid lines
+    for (let x = offsetX % gridSize; x < canvasWidth; x += gridSize) {
+      gridLines.push(
         <Line
-          key={`room-${room.id}`}
-          points={points}
-          closed={true}
-          fill={style.fill}
-          stroke={style.stroke}
-          strokeWidth={style.strokeWidth}
-          onClick={() => onElementClick?.(room.id, 'room')}
+          key={`vgrid-${x}`}
+          points={[x, 0, x, canvasHeight]}
+          stroke="rgba(149, 165, 166, 0.2)"
+          strokeWidth={0.5}
         />
       );
-    });
+    }
+
+    // Horizontal grid lines
+    for (let y = offsetY % gridSize; y < canvasHeight; y += gridSize) {
+      gridLines.push(
+        <Line
+          key={`hgrid-${y}`}
+          points={[0, y, canvasWidth, y]}
+          stroke="rgba(149, 165, 166, 0.2)"
+          strokeWidth={0.5}
+        />
+      );
+    }
+
+    return gridLines;
   };
 
-  const renderLegend = () => (
-    <Group x={dimensions.width - 220} y={20}>
-      <Rect
-        width={200}
-        height={160}
-        fill="rgba(255, 255, 255, 0.98)"
-        stroke="#bdc3c7"
-        strokeWidth={1}
-        cornerRadius={12}
-        shadowColor="rgba(0,0,0,0.1)"
-        shadowBlur={8}
-        shadowOffset={{ x: 2, y: 2 }}
-      />
+  const renderLegend = () => {
+    const legendItems = [];
+    let yOffset = 20;
 
-      <Rect
-        x={0}
-        y={0}
-        width={200}
-        height={35}
-        fill="rgba(52, 73, 94, 0.95)"
-        cornerRadius={12}
-      />
-      <Text text="LÉGENDE" x={15} y={12} fontSize={14} fontStyle="bold" fill="white" />
+    // Stage indicator
+    legendItems.push(
+      <Group key="stage-indicator">
+        <Rect
+          x={canvasWidth - 180}
+          y={10}
+          width={160}
+          height={30}
+          fill="rgba(255, 255, 255, 0.9)"
+          stroke="#bdc3c7"
+          strokeWidth={1}
+          cornerRadius={4}
+        />
+        <Text
+          x={canvasWidth - 100}
+          y={20}
+          text={`Stage: ${stage.toUpperCase()}`}
+          fontSize={12}
+          fill="#2c3e50"
+          align="center"
+          fontWeight="bold"
+        />
+      </Group>
+    );
 
-      <Line points={[15, 55, 45, 55]} stroke="#2c3e50" strokeWidth={4} lineCap="round" />
-      <Text text="MUR" x={55} y={48} fontSize={13} fontFamily="Arial" fill="#2c3e50" fontStyle="bold" />
+    // Utilization display
+    if (showIlots && floorPlan.ilots.length > 0) {
+      const totalIlotArea = floorPlan.ilots.reduce((sum, ilot) => sum + ilot.area, 0);
+      const utilization = ((totalIlotArea / floorPlan.availableArea) * 100).toFixed(1);
+      
+      legendItems.push(
+        <Group key="utilization">
+          <Rect
+            x={canvasWidth - 180}
+            y={50}
+            width={160}
+            height={25}
+            fill="rgba(46, 204, 113, 0.1)"
+            stroke="#27ae60"
+            strokeWidth={1}
+            cornerRadius={4}
+          />
+          <Text
+            x={canvasWidth - 100}
+            y={58}
+            text={`Utilization: ${utilization}%`}
+            fontSize={11}
+            fill="#27ae60"
+            align="center"
+            fontWeight="bold"
+          />
+        </Group>
+      );
+    }
 
-      <Rect x={15} y={70} width={25} height={15} fill="rgba(231, 76, 60, 0.2)" stroke="#e74c3c" cornerRadius={2} />
-      <Text text="NO ENTRÉE" x={55} y={74} fontSize={13} fontFamily="Arial" fill="#c0392b" fontStyle="bold" />
-
-      <Circle x={27} y={105} radius={10} fill="rgba(231, 76, 60, 0.4)" stroke="#e74c3c" strokeWidth={2} />
-      <Line points={[17, 105, 37, 105]} stroke="#e74c3c" strokeWidth={3} lineCap="round" />
-      <Text text="ENTRÉE/SORTIE" x={55} y={99} fontSize={13} fontFamily="Arial" fill="#c0392b" fontStyle="bold" />
-
-      {showIlots && (
-        <>
-          <Rect x={15} y={125} width={18} height={18} fill="rgba(155, 89, 182, 0.8)" stroke="#8e44ad" strokeWidth={2} cornerRadius={3} />
-          <Text text="ÎLOTS" x={55} y={129} fontSize={13} fontFamily="Arial" fill="#7d3c98" fontStyle="bold" />
-        </>
-      )}
-
-      {showCorridors && (
-        <>
-          <Line points={[15, 150, 45, 150]} stroke="#f39c12" strokeWidth={6} lineCap="round" />
-          <Text text="CORRIDORS" x={55} y={144} fontSize={13} fontFamily="Arial" fill="#d68910" fontStyle="bold" />
-        </>
-      )}
-    </Group>
-  );
+    return legendItems;
+  };
 
   return (
-    <div className="w-full h-full bg-gradient-to-br from-slate-50 to-slate-100 relative overflow-hidden border border-slate-200 rounded-lg shadow-soft">
-      <div 
-        className="absolute inset-0 opacity-20"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(148, 163, 184, 0.3) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(148, 163, 184, 0.3) 1px, transparent 1px)
-          `,
-          backgroundSize: '20px 20px'
-        }}
-      />
-
-      <Stage
-        ref={stageRef}
-        width={dimensions.width}
-        height={dimensions.height}
-        draggable={true}
-        onWheel={(e) => {
-          e.evt.preventDefault();
-          const scaleBy = 1.02;
-          const stage = e.target.getStage();
-          const oldScale = stage.scaleX();
-          const pointer = stage.getPointerPosition();
-
-          const mousePointTo = {
-            x: (pointer.x - stage.x()) / oldScale,
-            y: (pointer.y - stage.y()) / oldScale,
-          };
-
-          const newScale = e.evt.deltaY > 0 ? oldScale * scaleBy : oldScale / scaleBy;
-
-          stage.scale({ x: newScale, y: newScale });
-
-          const newPos = {
-            x: pointer.x - mousePointTo.x * newScale,
-            y: pointer.y - mousePointTo.y * newScale,
-          };
-
-          stage.position(newPos);
-          stage.batchDraw();
-        }}
-      >
+    <div ref={containerRef} className="w-full h-full relative">
+      <Stage width={canvasWidth} height={canvasHeight} ref={stageRef}>
         <Layer>
-          {floorPlan && (
-            <Text
-              x={10}
-              y={10}
-              text={`${floorPlan.name} | Walls: ${floorPlan.walls.length} | Scale: ${scale.toFixed(2)} | Stage: ${stage === 'raw' ? 'RAW DATA' : stage.toUpperCase()}`}
-              fontSize={12}
-              fill="#475569"
-              fontFamily="Arial"
-            />
-          )}
-
-          {floorPlan && renderRooms()}
-          {floorPlan && renderRestrictedAreas()}
-          {floorPlan && renderWalls()}
-          {floorPlan && renderEntrances()}
-          {floorPlan && renderIlots()}
-          {floorPlan && renderCorridors()}
+          {/* Professional canvas background */}
+          <Rect
+            x={0}
+            y={0}
+            width={canvasWidth}
+            height={canvasHeight}
+            fill="linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)"
+          />
+          
+          {/* Grid overlay */}
+          {renderGrid()}
+          
+          {/* Floor plan elements */}
+          {renderRooms()}
+          {renderRestrictedAreas()}
+          {renderWalls()}
+          {renderEntrances()}
+          {renderCorridors()}
+          {renderIlots()}
+          
+          {/* Professional legend and info */}
           {renderLegend()}
         </Layer>
       </Stage>
-
-      <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-3 shadow-medium border border-slate-200">
-        <div className="flex items-center space-x-3 text-sm text-slate-600">
-          <div className="flex items-center space-x-1">
-            <div className="w-8 h-0.5 bg-slate-400"></div>
-            <span className="font-medium">1m</span>
-          </div>
-          <div className="text-xs opacity-60">Scale: 1:{floorPlan?.scale || 1}</div>
+      
+      {/* Precision scale indicator */}
+      <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-lg border shadow-sm">
+        <div className="flex items-center space-x-2 text-sm text-slate-600">
+          <div className="w-12 h-0.5 bg-slate-800"></div>
+          <span className="font-mono">{(50 / scale).toFixed(1)}m</span>
+        </div>
+      </div>
+      
+      {/* Stage-specific status indicator */}
+      <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-lg border shadow-sm">
+        <div className="flex items-center space-x-2">
+          <div className={`w-2 h-2 rounded-full ${
+            stage === 'parsed' ? 'bg-red-500' :
+            stage === 'processed' ? 'bg-green-500' :
+            stage === 'placed' ? 'bg-blue-500' :
+            stage === 'corridors' ? 'bg-purple-500' :
+            'bg-gray-400'
+          }`}></div>
+          <span className="text-sm font-medium text-slate-700">
+            {stage === 'parsed' ? 'Raw CAD Data' :
+             stage === 'processed' ? 'Processed Plan' :
+             stage === 'placed' ? 'Îlots Placed' :
+             stage === 'corridors' ? 'Complete Layout' :
+             'Empty Canvas'}
+          </span>
         </div>
       </div>
     </div>
