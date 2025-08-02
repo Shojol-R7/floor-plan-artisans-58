@@ -281,27 +281,52 @@ export const FloorPlanProcessor: React.FC = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {/* Step 1: Place Îlots */}
-                    <Button
-                      onClick={handlePlaceIlots}
-                      disabled={isProcessing || currentStage !== 'empty'}
-                      className="w-full justify-start"
-                      variant={currentStage === 'empty' ? 'default' : 'secondary'}
-                    >
-                      <Grid className="h-4 w-4 mr-2" />
-                      {currentStage === 'empty' ? 'Place Îlots' : '✓ Îlots Placed'}
-                    </Button>
-                    
-                    {/* Step 2: Generate Corridors */}
-                    <Button
-                      onClick={handleGenerateCorridors}
-                      disabled={isProcessing || currentStage !== 'placed'}
-                      className="w-full justify-start"
-                      variant={currentStage === 'placed' ? 'default' : 'secondary'}
-                    >
-                      <Route className="h-4 w-4 mr-2" />
-                      {currentStage === 'corridors' ? '✓ Corridors Generated' : 'Generate Corridors'}
-                    </Button>
+                    {/* Interactive Step Controls */}
+                    <div className="space-y-2">
+                      {/* Step 2: Place Îlots */}
+                      <Button
+                        onClick={handlePlaceIlots}
+                        disabled={isProcessing || currentStage !== 'empty'}
+                        className="w-full justify-between"
+                        variant={currentStage === 'empty' ? 'default' : 'secondary'}
+                        size="lg"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Grid className="h-5 w-5" />
+                          <div className="text-left">
+                            <div className="font-medium">
+                              {currentStage === 'empty' ? 'Place Îlots' : '✓ Îlots Placed'}
+                            </div>
+                            <div className="text-xs opacity-75">
+                              {config.layoutProfile}% density • {floorPlan?.ilots?.length || 0} îlots
+                            </div>
+                          </div>
+                        </div>
+                        {currentStage === 'empty' && <span className="text-xs bg-primary/20 px-2 py-1 rounded">Next</span>}
+                      </Button>
+                      
+                      {/* Step 3: Generate Corridors */}
+                      <Button
+                        onClick={handleGenerateCorridors}
+                        disabled={isProcessing || currentStage !== 'placed'}
+                        className="w-full justify-between"
+                        variant={currentStage === 'placed' ? 'default' : 'secondary'}
+                        size="lg"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Route className="h-5 w-5" />
+                          <div className="text-left">
+                            <div className="font-medium">
+                              {currentStage === 'corridors' ? '✓ Corridors Generated' : 'Generate Corridors'}
+                            </div>
+                            <div className="text-xs opacity-75">
+                              {config.corridorWidth}m width • {floorPlan?.corridors?.length || 0} corridors
+                            </div>
+                          </div>
+                        </div>
+                        {currentStage === 'placed' && <span className="text-xs bg-primary/20 px-2 py-1 rounded">Next</span>}
+                      </Button>
+                    </div>
                     
                     <Separator />
                     
@@ -330,48 +355,123 @@ export const FloorPlanProcessor: React.FC = () => {
               </Card>
             )}
 
-            {/* Processing Status */}
+            {/* Workflow Progress Tracker */}
             {floorPlan && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <FileText className="h-5 w-5" />
-                    Processing Actions
+                    Workflow Progress
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  <Button
-                    onClick={handlePlaceIlots}
-                    disabled={isProcessing || currentStage !== 'empty'}
-                    className="w-full"
-                    variant={currentStage === 'empty' ? 'default' : 'secondary'}
-                  >
-                    <Grid className="h-4 w-4 mr-2" />
-                    Place Îlots ({config.layoutProfile}%)
-                  </Button>
+                <CardContent>
+                  <div className="space-y-4">
+                    {/* Step Progress Indicators */}
+                    <div className="space-y-3">
+                      {/* Step 1 */}
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                          currentStage !== 'empty' ? 'bg-green-500 text-white' : 'bg-primary text-primary-foreground'
+                        }`}>
+                          {currentStage !== 'empty' ? '✓' : '1'}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-medium">Parse Floor Plan</p>
+                          <p className="text-sm text-muted-foreground">✓ Completed</p>
+                        </div>
+                      </div>
+                      
+                      {/* Step 2 */}
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                          currentStage === 'corridors' ? 'bg-green-500 text-white' : 
+                          currentStage === 'placed' ? 'bg-primary text-primary-foreground' :
+                          currentStage === 'empty' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                        }`}>
+                          {currentStage === 'corridors' ? '✓' : '2'}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-medium">Place Îlots</p>
+                          <p className="text-sm text-muted-foreground">
+                            {currentStage === 'corridors' ? '✓ Completed' : 
+                             currentStage === 'placed' ? '✓ Completed' :
+                             currentStage === 'empty' ? 'Ready to start' : 'Pending'}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* Step 3 */}
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                          currentStage === 'corridors' ? 'bg-green-500 text-white' : 
+                          currentStage === 'placed' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                        }`}>
+                          {currentStage === 'corridors' ? '✓' : '3'}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-medium">Generate Corridors</p>
+                          <p className="text-sm text-muted-foreground">
+                            {currentStage === 'corridors' ? '✓ Completed' : 
+                             currentStage === 'placed' ? 'Ready to start' : 'Pending'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Real-time Processing Status */}
+                    {isProcessing && (
+                      <div className="space-y-2 p-3 bg-muted rounded-lg">
+                        <div className="flex justify-between text-sm">
+                          <span className="font-medium">{processingStage.message}</span>
+                          <span>{processingStage.progress}%</span>
+                        </div>
+                        <Progress value={processingStage.progress} />
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Current Statistics */}
+            {floorPlan && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Current Results</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Floor Area:</span>
+                      <p className="font-semibold">{floorPlan.totalArea?.toFixed(1) || 0}m²</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Available:</span>
+                      <p className="font-semibold">{floorPlan.availableArea?.toFixed(1) || 0}m²</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Îlots:</span>
+                      <p className="font-semibold">{floorPlan.ilots?.length || 0}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Corridors:</span>
+                      <p className="font-semibold">{floorPlan.corridors?.length || 0}</p>
+                    </div>
+                  </div>
                   
-                  <Button
-                    onClick={handleGenerateCorridors}
-                    disabled={isProcessing || currentStage !== 'placed'}
-                    className="w-full"
-                    variant={currentStage === 'placed' ? 'default' : 'secondary'}
-                  >
-                    <Route className="h-4 w-4 mr-2" />
-                    Generate Corridors ({config.corridorWidth}m)
-                  </Button>
-                  
-                  <Separator />
-                  
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={handleExport}
-                      disabled={!floorPlan || currentStage === 'empty'}
-                      variant="outline"
-                      className="flex-1"
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Export
-                    </Button>
+                  {floorPlan.ilots && floorPlan.ilots.length > 0 && (
+                    <div className="mt-4 pt-3 border-t">
+                      <div className="text-sm">
+                        <span className="text-muted-foreground">Utilization Rate:</span>
+                        <p className="font-semibold text-primary">
+                          {((floorPlan.ilots.reduce((sum, ilot) => sum + ilot.area, 0) / floorPlan.availableArea) * 100).toFixed(1)}%
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
                     
                     <Button
                       onClick={handleReset}
