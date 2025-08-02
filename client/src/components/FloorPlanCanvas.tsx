@@ -258,6 +258,55 @@ export const FloorPlanCanvas: React.FC<FloorPlanCanvasProps> = ({
     });
   };
 
+  const renderRooms = () => {
+    return floorPlan.rooms.map((room: Room) => {
+      const points = room.boundaries.flatMap(point => {
+        const transformed = transformPoint(point.x, point.y);
+        return [transformed.x, transformed.y];
+      });
+      
+      // Calculate center for room labels
+      const centerX = room.boundaries.reduce((sum, p) => sum + p.x, 0) / room.boundaries.length;
+      const centerY = room.boundaries.reduce((sum, p) => sum + p.y, 0) / room.boundaries.length;
+      const center = transformPoint(centerX, centerY);
+      
+      return (
+        <Group key={room.id}>
+          <Line
+            points={points}
+            fill="#F8F9FA" // Light gray background for rooms
+            fillOpacity={0.4}
+            stroke="#E5E7EB"
+            strokeWidth={1}
+            closed={true}
+            onClick={() => onElementClick?.(room.id, 'room')}
+          />
+          {showMeasurements && (
+            <Text
+              x={center.x}
+              y={center.y - 8}
+              text={room.name || `Room ${room.id}`}
+              fontSize={10}
+              fill="#374151"
+              align="center"
+              fontWeight="bold"
+            />
+          )}
+          {showMeasurements && (
+            <Text
+              x={center.x}
+              y={center.y + 6}
+              text={`${room.area.toFixed(1)}m²`}
+              fontSize={8}
+              fill="#6B7280"
+              align="center"
+            />
+          )}
+        </Group>
+      );
+    });
+  };
+
   const renderLegend = () => {
     if (stage === 'empty') return null;
     
@@ -361,12 +410,13 @@ export const FloorPlanCanvas: React.FC<FloorPlanCanvasProps> = ({
             />
           )}
           
-          {/* Render in correct z-order */}
+          {/* Render in correct z-order - rooms first, then restricted areas, walls, entrances, ilots, corridors */}
+          {floorPlan && renderRooms()}
           {floorPlan && renderRestrictedAreas()}
-          {floorPlan && renderEntrances()}
           {floorPlan && renderWalls()}
-          {floorPlan && renderCorridors()}
+          {floorPlan && renderEntrances()}
           {floorPlan && renderIlots()}
+          {floorPlan && renderCorridors()}
           {renderLegend()}
         </Layer>
       </Stage>
