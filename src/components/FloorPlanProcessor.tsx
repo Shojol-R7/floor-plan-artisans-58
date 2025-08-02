@@ -6,9 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Upload, FileText, Zap, Grid, Route, Download, Play, Pause, RotateCcw } from 'lucide-react';
 import { FloorPlan, PlacementConfig, ProcessingStage, AnalysisResult } from '@/types/floorplan';
-import { cadParser } from '@/utils/cadParser';
-import { IntelligentIlotPlacer } from '@/utils/ilotPlacement';
-import { IntelligentCorridorGenerator } from '@/utils/corridorGenerator';
+import { AdvancedFloorPlanProcessor } from '@/utils/advancedFloorPlanProcessor';
 import { FloorPlanCanvas } from './FloorPlanCanvas';
 import { ConfigurationPanel } from './ConfigurationPanel';
 import { toast } from 'sonner';
@@ -36,54 +34,24 @@ export const FloorPlanProcessor: React.FC = () => {
     if (!file) return;
 
     setIsProcessing(true);
-    setProcessingStage({
-      stage: 'parsing',
-      progress: 0,
-      message: 'Parsing CAD file...'
-    });
-
+    
     try {
-      // Stage 1: Parse the file
-      setProcessingStage({
-        stage: 'parsing',
-        progress: 20,
-        message: 'Extracting geometric elements...'
+      // Create advanced processor with progress callback
+      const processor = new AdvancedFloorPlanProcessor((stage) => {
+        setProcessingStage(stage);
       });
       
-      const parsedPlan = await cadParser.parseFile(file);
+      // Process the complete floor plan with îlots and corridors
+      const result = await processor.processFloorPlan(file, config);
       
-      // Stage 2: Analyze the floor plan
-      setProcessingStage({
-        stage: 'analyzing',
-        progress: 40,
-        message: 'Analyzing space constraints and opportunities...'
-      });
+      setFloorPlan(result.floorPlan);
+      setCurrentStage('corridors'); // Complete pipeline
       
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate analysis
-      
-      // Stage 3: Transform to empty floor plan
-      setProcessingStage({
-        stage: 'transforming',
-        progress: 60,
-        message: 'Creating clean architectural drawing...'
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      setFloorPlan(parsedPlan);
-      setCurrentStage('empty');
-      
-      setProcessingStage({
-        stage: 'complete',
-        progress: 100,
-        message: 'Floor plan successfully processed!'
-      });
-      
-      toast.success(`Successfully processed ${file.name}`);
+      toast.success(`Successfully processed ${file.name} with ${result.floorPlan.ilots.length} îlots and ${result.floorPlan.corridors.length} corridors`);
       
     } catch (error) {
       console.error('Error processing file:', error);
-      toast.error(`Failed to process ${file.name}: ${error.message}`);
+      toast.error(`Failed to process ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       
       setProcessingStage({
         stage: 'parsing',
@@ -93,131 +61,48 @@ export const FloorPlanProcessor: React.FC = () => {
     } finally {
       setIsProcessing(false);
     }
-  }, []);
+  }, [config]);
 
-  const handlePlaceIlots = useCallback(async () => {
+  const handleStepByStepMode = useCallback(async (step: 'empty' | 'placed' | 'corridors') => {
     if (!floorPlan) return;
 
     setIsProcessing(true);
-    setProcessingStage({
-      stage: 'placing',
-      progress: 0,
-      message: 'Calculating optimal îlot placement...'
-    });
-
+    
     try {
-      const placer = new IntelligentIlotPlacer(floorPlan, config);
-      
-      setProcessingStage({
-        stage: 'placing',
-        progress: 30,
-        message: 'Analyzing available zones...'
+      const processor = new AdvancedFloorPlanProcessor((stage) => {
+        setProcessingStage(stage);
       });
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setProcessingStage({
-        stage: 'placing',
-        progress: 60,
-        message: 'Placing îlots with architectural constraints...'
-      });
-      
-      const placedIlots = placer.placeIlots();
-      
-      setProcessingStage({
-        stage: 'placing',
-        progress: 90,
-        message: 'Optimizing layout...'
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      setFloorPlan(prev => prev ? { ...prev, ilots: placedIlots } : null);
-      setCurrentStage('placed');
-      
-      setProcessingStage({
-        stage: 'complete',
-        progress: 100,
-        message: `Successfully placed ${placedIlots.length} îlots!`
-      });
-      
-      toast.success(`Placed ${placedIlots.length} îlots with ${config.layoutProfile}% layout density`);
+
+      if (step === 'placed' && currentStage === 'empty') {
+        // Re-process to place îlots only
+        const result = await processor.processFloorPlan(
+          new File([], floorPlan.name), 
+          { ...config, layoutProfile: config.layoutProfile }
+        );
+        
+        setFloorPlan(prev => prev ? { ...prev, ilots: result.floorPlan.ilots } : null);
+        setCurrentStage('placed');
+        toast.success(`Placed ${result.floorPlan.ilots.length} îlots`);
+        
+      } else if (step === 'corridors' && currentStage === 'placed') {
+        // Generate corridors for existing îlots
+        const result = await processor.processFloorPlan(
+          new File([], floorPlan.name), 
+          config
+        );
+        
+        setFloorPlan(prev => prev ? { ...prev, corridors: result.floorPlan.corridors } : null);
+        setCurrentStage('corridors');
+        toast.success(`Generated ${result.floorPlan.corridors.length} corridors`);
+      }
       
     } catch (error) {
-      console.error('Error placing îlots:', error);
-      toast.error('Failed to place îlots');
-      
-      setProcessingStage({
-        stage: 'placing',
-        progress: 0,
-        message: 'Error placing îlots'
-      });
+      console.error('Error in step-by-step processing:', error);
+      toast.error('Processing failed');
     } finally {
       setIsProcessing(false);
     }
-  }, [floorPlan, config]);
-
-  const handleGenerateCorridors = useCallback(async () => {
-    if (!floorPlan || floorPlan.ilots.length === 0) return;
-
-    setIsProcessing(true);
-    setProcessingStage({
-      stage: 'corridors',
-      progress: 0,
-      message: 'Analyzing îlot connectivity...'
-    });
-
-    try {
-      const generator = new IntelligentCorridorGenerator(floorPlan, config.corridorWidth);
-      
-      setProcessingStage({
-        stage: 'corridors',
-        progress: 30,
-        message: 'Calculating optimal circulation paths...'
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, 1200));
-      
-      setProcessingStage({
-        stage: 'corridors',
-        progress: 70,
-        message: 'Generating corridor network...'
-      });
-      
-      const generatedCorridors = generator.generateCorridors(floorPlan.ilots);
-      
-      setProcessingStage({
-        stage: 'corridors',
-        progress: 90,
-        message: 'Validating accessibility compliance...'
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      setFloorPlan(prev => prev ? { ...prev, corridors: generatedCorridors } : null);
-      setCurrentStage('corridors');
-      
-      setProcessingStage({
-        stage: 'complete',
-        progress: 100,
-        message: `Generated ${generatedCorridors.length} corridors!`
-      });
-      
-      toast.success(`Generated ${generatedCorridors.length} corridors with ${config.corridorWidth}m width`);
-      
-    } catch (error) {
-      console.error('Error generating corridors:', error);
-      toast.error('Failed to generate corridors');
-      
-      setProcessingStage({
-        stage: 'corridors',
-        progress: 0,
-        message: 'Error generating corridors'
-      });
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [floorPlan, config]);
+  }, [floorPlan, config, currentStage]);
 
   const handleReset = () => {
     setFloorPlan(null);
@@ -346,7 +231,7 @@ export const FloorPlanProcessor: React.FC = () => {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <Button
-                    onClick={handlePlaceIlots}
+                    onClick={() => handleStepByStepMode('placed')}
                     disabled={isProcessing || currentStage !== 'empty'}
                     className="w-full"
                     variant={currentStage === 'empty' ? 'default' : 'secondary'}
@@ -356,7 +241,7 @@ export const FloorPlanProcessor: React.FC = () => {
                   </Button>
                   
                   <Button
-                    onClick={handleGenerateCorridors}
+                    onClick={() => handleStepByStepMode('corridors')}
                     disabled={isProcessing || currentStage !== 'placed'}
                     className="w-full"
                     variant={currentStage === 'placed' ? 'default' : 'secondary'}

@@ -6,7 +6,7 @@ export class IntelligentCorridorGenerator {
 
   constructor(floorPlan: FloorPlan, corridorWidth: number = 1.2) {
     this.floorPlan = floorPlan;
-    this.corridorWidth = corridorWidth;
+    this.corridorWidth = corridorWidth; // Default 1.2m as per requirements
   }
 
   generateCorridors(ilots: Ilot[]): Corridor[] {
