@@ -7,6 +7,8 @@ import { Separator } from '@/components/ui/separator';
 import { Upload, FileText, Zap, Grid, Route, Download, Play, Pause, RotateCcw } from 'lucide-react';
 import { FloorPlan, PlacementConfig, ProcessingStage, AnalysisResult } from '@/types/floorplan';
 import { AdvancedFloorPlanProcessor } from '@/utils/advancedFloorPlanProcessor';
+import { IntelligentIlotPlacer } from '@/utils/ilotPlacement';
+import { IntelligentCorridorGenerator } from '@/utils/corridorGenerator';
 import { FloorPlanCanvas } from './FloorPlanCanvas';
 import { ConfigurationPanel } from './ConfigurationPanel';
 import { toast } from 'sonner';
@@ -63,46 +65,85 @@ export const FloorPlanProcessor: React.FC = () => {
     }
   }, [config]);
 
-  const handleStepByStepMode = useCallback(async (step: 'empty' | 'placed' | 'corridors') => {
+  const handlePlaceIlots = useCallback(async () => {
     if (!floorPlan) return;
 
     setIsProcessing(true);
-    
-    try {
-      const processor = new AdvancedFloorPlanProcessor((stage) => {
-        setProcessingStage(stage);
-      });
+    setProcessingStage({
+      stage: 'placing',
+      progress: 0,
+      message: 'Placing îlots with intelligent algorithms...'
+    });
 
-      if (step === 'placed' && currentStage === 'empty') {
-        // Re-process to place îlots only
-        const result = await processor.processFloorPlan(
-          new File([], floorPlan.name), 
-          { ...config, layoutProfile: config.layoutProfile }
-        );
-        
-        setFloorPlan(prev => prev ? { ...prev, ilots: result.floorPlan.ilots } : null);
-        setCurrentStage('placed');
-        toast.success(`Placed ${result.floorPlan.ilots.length} îlots`);
-        
-      } else if (step === 'corridors' && currentStage === 'placed') {
-        // Generate corridors for existing îlots
-        const result = await processor.processFloorPlan(
-          new File([], floorPlan.name), 
-          config
-        );
-        
-        setFloorPlan(prev => prev ? { ...prev, corridors: result.floorPlan.corridors } : null);
-        setCurrentStage('corridors');
-        toast.success(`Generated ${result.floorPlan.corridors.length} corridors`);
-      }
+    try {
+      const ilotPlacer = new IntelligentIlotPlacer(floorPlan, config);
+      
+      setProcessingStage({
+        stage: 'placing',
+        progress: 50,
+        message: 'Optimizing îlot placement...'
+      });
+      
+      const placedIlots = ilotPlacer.placeIlots();
+      
+      setFloorPlan(prev => prev ? { ...prev, ilots: placedIlots } : null);
+      setCurrentStage('placed');
+      
+      setProcessingStage({
+        stage: 'complete',
+        progress: 100,
+        message: `Successfully placed ${placedIlots.length} îlots!`
+      });
+      
+      toast.success(`Placed ${placedIlots.length} îlots with ${config.layoutProfile}% layout density`);
       
     } catch (error) {
-      console.error('Error in step-by-step processing:', error);
-      toast.error('Processing failed');
+      console.error('Error placing îlots:', error);
+      toast.error('Failed to place îlots');
     } finally {
       setIsProcessing(false);
     }
-  }, [floorPlan, config, currentStage]);
+  }, [floorPlan, config]);
+
+  const handleGenerateCorridors = useCallback(async () => {
+    if (!floorPlan || floorPlan.ilots.length === 0) return;
+
+    setIsProcessing(true);
+    setProcessingStage({
+      stage: 'corridors',
+      progress: 0,
+      message: 'Generating corridor network...'
+    });
+
+    try {
+      const corridorGenerator = new IntelligentCorridorGenerator(floorPlan, config.corridorWidth);
+      
+      setProcessingStage({
+        stage: 'corridors',
+        progress: 50,
+        message: 'Optimizing corridor paths...'
+      });
+      
+      const generatedCorridors = corridorGenerator.generateCorridors(floorPlan.ilots);
+      
+      setFloorPlan(prev => prev ? { ...prev, corridors: generatedCorridors } : null);
+      setCurrentStage('corridors');
+      
+      setProcessingStage({
+        stage: 'complete',
+        progress: 100,
+        message: `Generated ${generatedCorridors.length} corridors!`
+      });
+      
+      toast.success(`Generated ${generatedCorridors.length} corridors with ${config.corridorWidth}m width`);
+      
+    } catch (error) {
+      console.error('Error generating corridors:', error);
+      toast.error('Failed to generate corridors');
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [floorPlan, config]);
 
   const handleReset = () => {
     setFloorPlan(null);
@@ -231,7 +272,7 @@ export const FloorPlanProcessor: React.FC = () => {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <Button
-                    onClick={() => handleStepByStepMode('placed')}
+                    onClick={handlePlaceIlots}
                     disabled={isProcessing || currentStage !== 'empty'}
                     className="w-full"
                     variant={currentStage === 'empty' ? 'default' : 'secondary'}
@@ -241,7 +282,7 @@ export const FloorPlanProcessor: React.FC = () => {
                   </Button>
                   
                   <Button
-                    onClick={() => handleStepByStepMode('corridors')}
+                    onClick={handleGenerateCorridors}
                     disabled={isProcessing || currentStage !== 'placed'}
                     className="w-full"
                     variant={currentStage === 'placed' ? 'default' : 'secondary'}
