@@ -42,7 +42,7 @@ export interface Ilot {
   height: number;
   area: number;
   rotation: number;
-  type: 'small' | 'medium' | 'large';
+  type: 'small' | 'medium' | 'large' | 'micro' | 'small-medium' | 'medium-large' | 'fill' | 'standard';
   isPlaced: boolean;
 }
 
